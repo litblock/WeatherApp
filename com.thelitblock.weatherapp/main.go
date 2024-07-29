@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/joho/godotenv"
 	"io"
@@ -37,6 +38,50 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	fmt.Println(response.StatusCode)
-	fmt.Println(string(responseData))
+	//fmt.Println(response.StatusCode)
+	//fmt.Println(string(responseData))
+
+	var result map[string]interface{}
+	err = json.Unmarshal(responseData, &result)
+	if err != nil {
+		log.Fatalf("Error parsing JSON: %v", err)
+	}
+
+	locationMap, ok := result["location"].(map[string]interface{})
+	if !ok {
+		log.Fatal("error: 'location' field is not of type map[string]interface{}")
+	}
+	name, ok := locationMap["name"].(string)
+	if !ok {
+		log.Fatal("error: 'name' field is not of type string")
+	}
+	region, ok := locationMap["region"].(string)
+	if !ok {
+		log.Fatal("error: 'region' field is not of type string")
+	}
+	country, ok := locationMap["country"].(string)
+	if !ok {
+		log.Fatal("error: 'country' field is not of type string")
+	}
+
+	currentMap, ok := result["current"].(map[string]interface{})
+	if !ok {
+		log.Fatal("error: 'current' field is not of type map[string]interface{}")
+	}
+	tempC, ok := currentMap["temp_c"].(float64)
+	if !ok {
+		log.Fatal("error: 'temp_c' field is not of type float64")
+	}
+	conditionMap, ok := currentMap["condition"].(map[string]interface{})
+	if !ok {
+		log.Fatal("error: 'condition' field is not of type map[string]interface{}")
+	}
+	conditionText, ok := conditionMap["text"].(string)
+	if !ok {
+		log.Fatal("error: 'text' field is not of type string")
+	}
+
+	fmt.Printf("Location: %s, %s, %s\n", name, region, country)
+	fmt.Printf("Temperature: %.2f°C\n", tempC)
+	fmt.Printf("Condition: %s\n", conditionText)
 }
