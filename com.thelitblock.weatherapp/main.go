@@ -1,87 +1,80 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"github.com/joho/godotenv"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 )
 
+type WeatherResponse struct {
+	Location struct {
+		Name    string `json:"name"`
+		Region  string `json:"region"`
+		Country string `json:"country"`
+	} `json:"location"`
+	Current struct {
+		TempC     float64 `json:"temp_c"`
+		Condition struct {
+			Text string `json:"text"`
+		} `json:"condition"`
+	} `json:"current"`
+}
+
 func main() {
-	env := godotenv.Load()
-	if env != nil {
+	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
 	weatherKey := os.Getenv("WEATHER_TOKEN")
+	if weatherKey == "" {
+		log.Fatal("WEATHER_TOKEN not set in .env file")
+	}
 
-	var location string
+	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("Enter location: ")
-	_, err := fmt.Scanln(&location)
+	location, err := reader.ReadString('\n')
 	if err != nil {
 		log.Fatalf("Error reading location: %v", err)
 	}
+	location = strings.TrimSpace(location)
 
-	url := fmt.Sprintf("http://api.weatherapi.com/v1/current.json?key=%s&q=%s&aqi=no", weatherKey, location)
-	response, err := http.Get(url)
+	encodedLocation := url.QueryEscape(location)
 
+	url := fmt.Sprintf("http://api.weatherapi.com/v1/current.json?key=%s&q=%s&aqi=no", weatherKey, encodedLocation)
+	resp, err := http.Get(url)
 	if err != nil {
-		fmt.Println("Error: ", err)
-		os.Exit(1)
+		log.Fatalf("Error making HTTP request: %v", err)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Fatalf("HTTP request failed with status code: %d, body: %s", resp.StatusCode, string(body))
 	}
 
-	responseData, err := io.ReadAll(response.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("Error reading response body: %v", err)
 	}
 
-	//fmt.Println(response.StatusCode)
-	//fmt.Println(string(responseData))
-
-	var result map[string]interface{}
-	err = json.Unmarshal(responseData, &result)
-	if err != nil {
+	var weather WeatherResponse
+	if err := json.Unmarshal(body, &weather); err != nil {
 		log.Fatalf("Error parsing JSON: %v", err)
 	}
 
-	locationMap, ok := result["location"].(map[string]interface{})
-	if !ok {
-		log.Fatal("error: 'location' field is not of type map[string]interface{}")
-	}
-	name, ok := locationMap["name"].(string)
-	if !ok {
-		log.Fatal("error: 'name' field is not of type string")
-	}
-	region, ok := locationMap["region"].(string)
-	if !ok {
-		log.Fatal("error: 'region' field is not of type string")
-	}
-	country, ok := locationMap["country"].(string)
-	if !ok {
-		log.Fatal("error: 'country' field is not of type string")
-	}
-
-	currentMap, ok := result["current"].(map[string]interface{})
-	if !ok {
-		log.Fatal("error: 'current' field is not of type map[string]interface{}")
-	}
-	tempC, ok := currentMap["temp_c"].(float64)
-	if !ok {
-		log.Fatal("error: 'temp_c' field is not of type float64")
-	}
-	conditionMap, ok := currentMap["condition"].(map[string]interface{})
-	if !ok {
-		log.Fatal("error: 'condition' field is not of type map[string]interface{}")
-	}
-	conditionText, ok := conditionMap["text"].(string)
-	if !ok {
-		log.Fatal("error: 'text' field is not of type string")
-	}
-
-	fmt.Printf("Location: %s, %s, %s\n", name, region, country)
-	fmt.Printf("Temperature: %.2f°C\n", tempC)
-	fmt.Printf("Condition: %s\n", conditionText)
+	fmt.Printf("Location: %s, %s, %s\n", weather.Location.Name, weather.Location.Region, weather.Location.Country)
+	fmt.Printf("Temperature: %.2f°C\n", weather.Current.TempC)
+	fmt.Printf("Condition: %s\n", weather.Current.Condition.Text)
 }
