@@ -4,13 +4,16 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/joho/godotenv"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type WeatherResponse struct {
@@ -25,6 +28,25 @@ type WeatherResponse struct {
 			Text string `json:"text"`
 		} `json:"condition"`
 	} `json:"current"`
+	Forecast struct {
+		Forecastday []struct {
+			Date string `json:"date"`
+			Day  struct {
+				MaxtempC  float64 `json:"maxtemp_c"`
+				MintempC  float64 `json:"mintemp_c"`
+				Condition struct {
+					Text string `json:"text"`
+				} `json:"condition"`
+			} `json:"day"`
+		} `json:"forecastday"`
+	} `json:"forecast"`
+}
+
+func promptUser(prompt string) string {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print(prompt)
+	input, _ := reader.ReadString('\n')
+	return strings.TrimSpace(input)
 }
 
 func main() {
@@ -37,17 +59,35 @@ func main() {
 		log.Fatal("WEATHER_TOKEN not set in .env file")
 	}
 
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Enter location: ")
-	location, err := reader.ReadString('\n')
-	if err != nil {
-		log.Fatalf("Error reading location: %v", err)
+	location := promptUser("Enter location: ")
+	days := promptUser("Enter number of forecast days (1-10, default 1): ")
+	aqi := promptUser("Include air quality data? (yes/no, default no): ")
+	alerts := promptUser("Include weather alerts? (yes/no, default no): ")
+
+	params := url.Values{}
+	params.Add("key", weatherKey)
+	params.Add("q", location)
+
+	numDays := 1
+	if days != "" {
+		if d, err := strconv.Atoi(days); err == nil && d >= 1 && d <= 10 {
+			numDays = d
+			params.Add("days", days)
+		} else {
+			fmt.Println("Invalid number of days. Using default (1).")
+		}
 	}
-	location = strings.TrimSpace(location)
 
-	encodedLocation := url.QueryEscape(location)
+	if strings.ToLower(aqi) == "yes" {
+		params.Add("aqi", "yes")
+	}
 
-	url := fmt.Sprintf("http://api.weatherapi.com/v1/current.json?key=%s&q=%s&aqi=no", weatherKey, encodedLocation)
+	if strings.ToLower(alerts) == "yes" {
+		params.Add("alerts", "yes")
+	}
+
+	url := fmt.Sprintf("http://api.weatherapi.com/v1/forecast.json?%s", params.Encode())
+
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Fatalf("Error making HTTP request: %v", err)
@@ -74,7 +114,19 @@ func main() {
 		log.Fatalf("Error parsing JSON: %v", err)
 	}
 
-	fmt.Printf("Location: %s, %s, %s\n", weather.Location.Name, weather.Location.Region, weather.Location.Country)
+	fmt.Printf("Weather for %s, %s, %s\n\n", weather.Location.Name, weather.Location.Region, weather.Location.Country)
+
+	fmt.Println("Current weather:")
 	fmt.Printf("Temperature: %.2f°C\n", weather.Current.TempC)
-	fmt.Printf("Condition: %s\n", weather.Current.Condition.Text)
+	fmt.Printf("Condition: %s\n\n", weather.Current.Condition.Text)
+
+	if numDays > 1 {
+		fmt.Println("Forecast:")
+		for _, forecast := range weather.Forecast.Forecastday {
+			date, _ := time.Parse("2006-01-02", forecast.Date)
+			fmt.Printf("%s:\n", date.Format("Monday, January 2"))
+			fmt.Printf("  Max: %.2f°C, Min: %.2f°C\n", forecast.Day.MaxtempC, forecast.Day.MintempC)
+			fmt.Printf("  Condition: %s\n\n", forecast.Day.Condition.Text)
+		}
+	}
 }
