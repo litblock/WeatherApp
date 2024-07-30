@@ -27,11 +27,25 @@ type WeatherResponse struct {
 		Condition struct {
 			Text string `json:"text"`
 		} `json:"condition"`
+		AirQuality struct {
+			CO           float64 `json:"co"`
+			NO2          float64 `json:"no2"`
+			O3           float64 `json:"o3"`
+			SO2          float64 `json:"so2"`
+			PM2_5        float64 `json:"pm2_5"`
+			PM10         float64 `json:"pm10"`
+			USEPAIndex   int     `json:"us-epa-index"`
+			GBDEFRAIndex int     `json:"gb-defra-index"`
+		} `json:"air_quality"`
 	} `json:"current"`
 	Forecast struct {
 		Forecastday []struct {
-			Date string `json:"date"`
-			Day  struct {
+			Date  string `json:"date"`
+			Astro struct {
+				Sunrise string `json:"sunrise"`
+				Sunset  string `json:"sunset"`
+			} `json:"astro"`
+			Day struct {
 				MaxtempC  float64 `json:"maxtemp_c"`
 				MintempC  float64 `json:"mintemp_c"`
 				Condition struct {
@@ -40,6 +54,14 @@ type WeatherResponse struct {
 			} `json:"day"`
 		} `json:"forecastday"`
 	} `json:"forecast"`
+	Alerts struct {
+		Alert []struct {
+			Headline  string `json:"headline"`
+			Desc      string `json:"desc"`
+			Effective string `json:"effective"`
+			Expires   string `json:"expires"`
+		} `json:"alert"`
+	} `json:"alerts"`
 }
 
 func promptUser(prompt string) string {
@@ -78,12 +100,16 @@ func main() {
 		}
 	}
 
+	includeAQI := false
 	if strings.ToLower(aqi) == "yes" {
 		params.Add("aqi", "yes")
+		includeAQI = true
 	}
 
+	includeAlerts := false
 	if strings.ToLower(alerts) == "yes" {
 		params.Add("alerts", "yes")
+		includeAlerts = true
 	}
 
 	url := fmt.Sprintf("http://api.weatherapi.com/v1/forecast.json?%s", params.Encode())
@@ -118,15 +144,37 @@ func main() {
 
 	fmt.Println("Current weather:")
 	fmt.Printf("Temperature: %.2f°C\n", weather.Current.TempC)
-	fmt.Printf("Condition: %s\n\n", weather.Current.Condition.Text)
+	fmt.Printf("Condition: %s\n", weather.Current.Condition.Text)
 
-	if numDays > 1 {
-		fmt.Println("Forecast:")
+	if includeAQI {
+		fmt.Println("\nAir Quality:")
+		fmt.Printf("US EPA Index: %d\n", weather.Current.AirQuality.USEPAIndex)
+		fmt.Printf("UK DEFRA Index: %d\n", weather.Current.AirQuality.GBDEFRAIndex)
+		fmt.Printf("CO: %.2f, NO2: %.2f, O3: %.2f, SO2: %.2f, PM2.5: %.2f, PM10: %.2f\n",
+			weather.Current.AirQuality.CO, weather.Current.AirQuality.NO2,
+			weather.Current.AirQuality.O3, weather.Current.AirQuality.SO2,
+			weather.Current.AirQuality.PM2_5, weather.Current.AirQuality.PM10)
+	}
+
+	if numDays > 0 && len(weather.Forecast.Forecastday) > 0 {
+		fmt.Println("\nForecast:")
 		for _, forecast := range weather.Forecast.Forecastday {
 			date, _ := time.Parse("2006-01-02", forecast.Date)
 			fmt.Printf("%s:\n", date.Format("Monday, January 2"))
 			fmt.Printf("  Max: %.2f°C, Min: %.2f°C\n", forecast.Day.MaxtempC, forecast.Day.MintempC)
-			fmt.Printf("  Condition: %s\n\n", forecast.Day.Condition.Text)
+			fmt.Printf("  Condition: %s\n", forecast.Day.Condition.Text)
+			fmt.Printf("  Sunrise: %s\n", forecast.Astro.Sunrise)
+			fmt.Printf("  Sunset: %s\n", forecast.Astro.Sunset)
+		}
+	}
+
+	if includeAlerts && len(weather.Alerts.Alert) > 0 {
+		fmt.Println("\nWeather Alerts:")
+		for _, alert := range weather.Alerts.Alert {
+			fmt.Printf("Headline: %s\n", alert.Headline)
+			fmt.Printf("Description: %s\n", alert.Desc)
+			fmt.Printf("Effective: %s\n", alert.Effective)
+			fmt.Printf("Expires: %s\n\n", alert.Expires)
 		}
 	}
 }
